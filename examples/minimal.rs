@@ -19,7 +19,7 @@ fn setup(
 ) {
     commands.spawn(PolylineBundle {
         polyline: polylines.add(Polyline {
-            vertices: vec![-Vec3::ONE, Vec3::ONE],
+            vertices: vec![-Vec3::ONE, Vec3::ONE].into(),
         }),
         material: polyline_materials.add(PolylineMaterial {
             width: 10.0,

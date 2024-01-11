@@ -1,4 +1,5 @@
 use crate::{material::PolylineMaterial, SHADER_HANDLE};
+use bevy::asset::{load_internal_asset, UntypedAssetId, VisitAssetDependencies};
 use bevy::{
     core::cast_slice,
     ecs::{
@@ -9,7 +10,7 @@ use bevy::{
         },
     },
     prelude::*,
-    reflect::{TypePath},
+    reflect::TypePath,
     render::{
         extract_component::{ComponentUniforms, DynamicUniformIndex, UniformComponentPlugin},
         render_asset::{RenderAsset, RenderAssetPlugin, RenderAssets},
@@ -21,16 +22,21 @@ use bevy::{
         Extract, Render, RenderApp, RenderSet,
     },
 };
-use bevy::asset::{load_internal_asset, UntypedAssetId, VisitAssetDependencies};
+use std::collections::VecDeque;
+use std::mem::size_of;
 
 pub struct PolylineRenderPlugin;
 
 impl Plugin for PolylineRenderPlugin {
     fn build(&self, app: &mut App) {
-        load_internal_asset!(app, SHADER_HANDLE, "shaders/polyline.wgsl", Shader::from_wgsl);
+        load_internal_asset!(
+            app,
+            SHADER_HANDLE,
+            "shaders/polyline.wgsl",
+            Shader::from_wgsl
+        );
 
-        app
-            .add_plugins(UniformComponentPlugin::<PolylineUniform>::default())
+        app.add_plugins(UniformComponentPlugin::<PolylineUniform>::default())
             .init_asset::<Polyline>()
             .add_plugins(RenderAssetPlugin::<Polyline>::default());
 
@@ -73,7 +79,7 @@ pub struct PolylineBundle {
 
 #[derive(Component, Debug, Default, Clone, TypePath)]
 pub struct Polyline {
-    pub vertices: Vec<Vec3>,
+    pub vertices: VecDeque<Vec3>,
 }
 
 impl Asset for Polyline {}
@@ -102,13 +108,22 @@ impl RenderAsset for Polyline {
         Self::PreparedAsset,
         bevy::render::render_asset::PrepareAssetError<Self::ExtractedAsset>,
     > {
-        let vertex_buffer_data = cast_slice(&polyline.vertices);
-        let vertex_buffer = render_device.create_buffer_with_data(
-            &BufferInitDescriptor {
-                usage: BufferUsages::VERTEX,
-                label: Some("Polyline Vertex Buffer"),
-                contents: vertex_buffer_data,
-            });
+        let size = (polyline.vertices.len() * size_of::<Vec3>()) as u64;
+        let vertex_buffer = render_device.create_buffer(&BufferDescriptor {
+            label: Some("Polyline Vertex Buffer"),
+            size,
+            usage: BufferUsages::VERTEX,
+            mapped_at_creation: true,
+        });
+        {
+            let slice = vertex_buffer.slice(..);
+            let mut range = slice.get_mapped_range_mut();
+            let (a, b) = polyline.vertices.as_slices();
+            let (a, b) = (cast_slice(a), cast_slice(b));
+            range[..a.len()].copy_from_slice(a);
+            range[a.len()..b.len() + a.len()].copy_from_slice(b);
+        }
+        vertex_buffer.unmap();
 
         Ok(GpuPolyline {
             vertex_buffer,
@@ -132,14 +147,7 @@ pub struct GpuPolyline {
 pub fn extract_polylines(
     mut commands: Commands,
     mut previous_len: Local<usize>,
-    query: Extract<
-        Query<(
-            Entity,
-            &ViewVisibility,
-            &GlobalTransform,
-            &Handle<Polyline>,
-        )>,
-    >,
+    query: Extract<Query<(Entity, &ViewVisibility, &GlobalTransform, &Handle<Polyline>)>>,
 ) {
     let mut values = Vec::with_capacity(*previous_len);
     for (entity, visibility, transform, handle) in query.iter() {
@@ -147,15 +155,7 @@ pub fn extract_polylines(
             continue;
         }
         let transform = transform.compute_matrix();
-        values.push((
-            entity,
-            (
-                handle.clone_weak(),
-                PolylineUniform {
-                    transform,
-                },
-            ),
-        ));
+        values.push((entity, (handle.clone_weak(), PolylineUniform { transform })));
     }
     *previous_len = values.len();
     commands.insert_or_spawn_batch(values);

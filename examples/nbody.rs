@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::{collections::VecDeque, f32::consts::PI};
 
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
@@ -60,7 +60,7 @@ fn setup(
             Trail(ConstGenericRingBuffer::<Vec3A, TRAIL_LENGTH>::new()),
             PolylineBundle {
                 polyline: polylines.add(Polyline {
-                    vertices: Vec::with_capacity(TRAIL_LENGTH),
+                    vertices: VecDeque::with_capacity(TRAIL_LENGTH),
                 }),
                 material: polyline_materials.add(PolylineMaterial {
                     width: (size * 0.1).powf(1.8),
@@ -101,7 +101,7 @@ fn rotator_system(time: Res<Time>, mut query: Query<&mut Transform, With<Rotates
             (t * 0.1).sin() * 2000.0,
             r * f32::sin(t * 0.1),
         )
-            .looking_at(Vec3::ZERO, Vec3::Y);
+        .looking_at(Vec3::ZERO, Vec3::Y);
     }
 }
 
@@ -227,7 +227,7 @@ fn update_trails(
                         .get_mut(polyline)
                         .unwrap()
                         .vertices
-                        .last_mut()
+                        .back_mut()
                         .unwrap() = body.position.into();
                 }
             }
