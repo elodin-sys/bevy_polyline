@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::{collections::VecDeque, f32::consts::PI};
 
 use bevy::{
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
@@ -226,7 +226,7 @@ fn update_trails(
                         .get_mut(polyline)
                         .unwrap()
                         .vertices
-                        .last_mut()
+                        .back_mut()
                         .unwrap() = body.position.into();
                 }
             }
