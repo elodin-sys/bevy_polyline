@@ -21,6 +21,7 @@ use bevy::{
         Extract, Render, RenderApp, RenderSet,
     },
 };
+use std::{collections::VecDeque, mem::size_of};
 
 pub struct PolylineBasePlugin;
 
@@ -66,7 +67,7 @@ pub struct PolylineBundle {
 
 #[derive(Debug, Default, Asset, Clone, TypePath)]
 pub struct Polyline {
-    pub vertices: Vec<Vec3>,
+    pub vertices: VecDeque<Vec3>,
 }
 
 impl RenderAsset for Polyline {
@@ -82,12 +83,22 @@ impl RenderAsset for Polyline {
         self,
         render_device: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
     ) -> Result<Self::PreparedAsset, bevy::render::render_asset::PrepareAssetError<Self>> {
-        let vertex_buffer_data = cast_slice(self.vertices.as_slice());
-        let vertex_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
+        let size = (self.vertices.len() * size_of::<Vec3>()) as u64;
+        let vertex_buffer = render_device.create_buffer(&BufferDescriptor {
             usage: BufferUsages::VERTEX,
             label: Some("Polyline Vertex Buffer"),
-            contents: vertex_buffer_data,
+            size,
+            mapped_at_creation: true,
         });
+        {
+            let slice = vertex_buffer.slice(..);
+            let mut range = slice.get_mapped_range_mut();
+            let (a, b) = self.vertices.as_slices();
+            let (a, b) = (cast_slice(a), cast_slice(b));
+            range[..a.len()].copy_from_slice(a);
+            range[a.len()..b.len() + a.len()].copy_from_slice(b);
+        }
+        vertex_buffer.unmap();
 
         Ok(GpuPolyline {
             vertex_buffer,
